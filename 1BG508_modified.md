@@ -1,0 +1,776 @@
+# Computer practical: population structure in humans
+
+**Uppsala University**
+Population genomics course (1BG508, VT2026)
+
+Author of this version: [Andrea Soler i Núñez](https://github.com/andreasoler1234)
+Content largely based on: <https://github.com/nikvuk92/1BG508>
+
+## Unmasking the mystery of the four populations
+
+The specific point of the exercise is for you to identify the populations you have been given in the 'unk1.fam' file. In order to achieve this, you have been provided a bunch of references that should come in handy as a way to compare the unknown to the known. Both reference and target populations can be found in the directory:
+
+```
+/proj/uppmax2026-1-25/private/0_POPULATION_STRUCTURE_PRACTICAL
+```
+
+The exercise is divided into two main sub-sections. The first part consists of different filtering steps that you need to conduct on the data that you have been provided. After you've completed that, the next thing to do is to merge the data sets together. The second part is the analysis of the data you have been working with & filtering. This includes analysing the PCA & Admixture results. Finally, you will make inferences and try to explain what you see.
+
+It is good to read up on some literature:
+
+- [Schlebusch 2012](https://pubmed.ncbi.nlm.nih.gov/22997136/)
+- [Gurdasani_2015](https://www.nature.com/articles/nature13997) 
+- [Patin 2017](https://science.sciencemag.org/content/356/6337/543)
+- [Vicente_2021](https://bmcbiol.biomedcentral.com/articles/10.1186/s12915-021-01193-z)
+
+## Brief overview of working in a Unix-style terminal:
+
+### Logging into Pelle and working on the server
+
+To log into Uppmax/Pelle, you open the console app and type:
+```
+ssh -AX {your_username}@pelle.uppmax.uu.se 
+```
+After this, you type in your account password. The password will not show as you type it, but you should press `Enter` when you're done.
+Next, you will type your two-factor authentication password. You read that in your authentication app on your phone.
+
+Generally, for any bigger job (bigger Plink jobs, PCA, Admixture) **always work in interactive mode**.
+
+#### Interactive nodes
+
+ ```
+    interactive -A uppmax2026-1-25 -t 01:00:00
+ ```
+ 
+#### Moving about
+
+- `cd` to change directory
+- `pwd` to print working directory (the name of your current directory)
+- `ls` or `ll` to list names of files in a directory
+- `realpath` to check the path to a file
+
+#### File/Directory manipulations
+
+- `cp` to copy a file
+- `mv` to move or rename files or directories
+- `mkdir` to  make a directory
+- `rm` to remove files or directories
+- `rmdir` to remove a directory
+
+#### Display or edit file content
+
+- `cat` to concatenate file contents to the screen/file
+- `less` to open file for viewing
+- `more`
+- `tail`
+- `head`
+- `nano` to edit a file in a text editor
+
+### Check the status of your jobs
+
+ ```
+ ?????
+ ```
+
+# PART 0 Knowing your way around and using Plink   	    
+
+[PLINK](https://www.cog-genomics.org/plink2) is a software for fast and efficient filtering, merging, editing of large SNP datasets, and exports to different outputs directly usable in other programs. Stores huge datasets in compact binary format from which it reads-in data very quickly.
+
+It is already pre-installed on Pelle server, you just have to load it:
+
+```
+module spider plink ##check which module name PLINK has
+module load PLINK/2.0.0-a.6.20-gfbf-2024a ##load the actual tool
+```
+
+This is what a basic command structure looks like in PLINK: 
+
+``` 
+plink --filetype_flag {INOUT_FILE} --command_flag {COMMAND_SPECIFICATION} --output_file_command --out {OUTPUT_FILE}
+```
+
+For example, to do filtering of missing markers at a cutoff of 10% missingness:
+
+```
+plink --bfile file1 --geno 0.1 --recode --out file2
+```
+
+What is the function above doing? Reading in a bed format file (`--bfile`) called 'file1', doing the filtering (`--geno 0.1`), converting it to ped format file (`--recode`) and giving it to you (`--out`) as a file called 'file2'.
+
+
+## PLINK file formats
+
+A single dataset that we could have had in a single VCF file, for example, is coded into different files in the PLINK format. At least two files are used, one containing information about the 'family' (the samples), and one or two more files containing information about the genotypes (the alleles that each individual has, and information about those loci in the genome). These are the three 'styles' in which we can have PLINK files:
+
+**ped format**: usual format (.ped and .fam)
+
+- `.ped` - marker info
+- `.fam` - sample and genotype info
+
+**bed format**: binary/compact ped format (.fam, .bim and .bed)
+
+- `.fam` - sample info 
+- `.bim` - marker info  
+- `.bed` - genotype info (binary format)
+
+**tped format**: transposed ped format (.tfam and .tped)
+
+- `.tfam` - sample info
+- `.tped` - marker and genotype info in transposed format
+
+
+## Get your working directory ready for the practical
+
+Go to the course directory, create a folder with your name (if you haven't done so yet), move there, and create another folder for this practical:
+
+```
+cd /proj/uppmax2026-1-25/private/
+mkdir {YOUR_NAME}
+cd {YOUR_NAME}
+mkdir {PCA_ADMX}
+```
+
+This is where the raw data is located:
+
+```
+/proj/uppmax2026-1-25/private/0_POPULATION_STRUCTURE_PRACTICAL/1_STARTING_POINT
+```
+
+And you want to copy the data in this directory to your personal folder:
+
+```
+cp /{CORRECT_PATH_TO_DATA_FOLDER}/* /{CORRECT_PATH_TO_YOUR_FOLDER}/
+```
+
+The files called *unk1* contain SNPs from 4 unknown population groups. During this practical, you are going to figure out the ancestry of these groups. The files called *refpops1* contain genoytpe information for reference individuals, downloaded from public panels. The file *RefInd1* is not a true sample, but rather a fake individual that we need for later steps :) To speed things up, we are only working with chromosomes 20-22 (some of the smallest).
+ 
+Look at the `.bim` and `.fam` files by typing:
+
+```
+less unk1.bim
+less unk1.fam
+
+``` 
+
+You can try to look at the `.bed` file as well, but this file is in binary format and cannot be visualized as text. If you want to see the specific genotype info you must export the `.bed` format to a `.ped` format, which you can do by typing:
+
+```
+plink --bfile unk1 --recode --out unk1
+```
+
+After running any command, it's quite useful to check what PLINK (or any program) outputs in the terminal screen. This will inform you about errors or general facts about what happened in your calculation.
+Can you see how many SNPs are there in the data? How many individuals? 
+
+Now look at the first few lines of the newly generated `.map` (marker info) and `.ped` (sample and genotype info) files using the `more` command:
+
+```
+more unk1.map
+more unk1.ped
+```
+
+If you want to read in the `bed`/`ped` file and convert it to `tped`/`tfam`:
+
+```
+plink --bfile unk1 --recode transpose --out unk1   ##option 1: from bed file
+plink --file unk1 --recode transpose --out unk1    ##option 2: from ped file
+```
+
+Did you notice the difference in the two commands above for reading from a bed (`--bfile`) and reading from a ped (`--file`) file? Which one takes longer to complete? 
+Perhaps it's not too evident now, since the files were not very big, but you can compare their sizes with `ls -lh * `.
+
+You can look at the first few lines of the  `.tfam` and `.tped` files by using the `less` command. Can you see what symbol is used to encode missing data?
+
+PLINK can convert to other file formats, too. You can have a look at the online manual for different types of conversions.
+
+
+# 1 - Merging, Filtering, Quality control
+
+## Step 1 - Filtering for missing data
+
+First, we filter for **marker** missingness. Paste in the command below to filter out markers with more than 10% missingness:
+
+```
+plink --bfile unk1 --geno 0.1 --make-bed --out unk2 
+```
+
+Look at the screen output, how many SNPs were excluded?
+
+## Step 2 - Filter for individual missingness
+
+Paste in the command below to filter out **individual** missingness:
+
+```
+plink --bfile unk2 --mind 0.15 --make-bed --out unk3 
+```
+
+Look at the screen output, how many individuals were excluded?
+
+## Step 3 - MAF filtering
+
+To filter for minimum allele frequency (MAF) is not always optimal, especially if you are going to merge your data with other datasets in which the alleles might be present. But we will apply a MAF filter not to showcase its use:
+
+Filter data for a MAF of 1%:
+
+```
+plink --bfile unk3 --maf 0.01 --make-bed --out unk4 
+```
+
+How many SNPs are left in the data set at this point?
+
+## Step 4 - Filtering for SNPs out of HWE
+
+SNPs not in Hardy-Weinberg equilibrium (HWE) usually indicate problems with the genotyping. However, to avoid filtering out SNPs that are selected for/against in certain groups (especially when working with case/control data) filtering HWE *within groups* is recommended. Now, we will just filter the entire data set for SNPs that aren’t in HWE with a significance threshold of 0.001.
+
+```
+plink --bfile unk4 --hwe 0.001 --make-bed --out unk5
+```
+
+How many SNPs were excluded?
+
+If you only want to look at the results from the HWE test, you can use the command below. By doing this, you can also obtain the observed and expected heterozygosities:
+
+```
+plink --bfile unk5 --hardy --out hardy_unk5
+```
+
+Look at file 'hardy_unk5.hwe', do you understand the output?
+
+This file has the following format:
+
+- `SNP`: SNP identifier
+- `TEST`: Code indicating sample
+- `A1`: Minor allele code
+- `A2`: Major allele code
+- `GENO`: Genotype counts: 11/12/22 
+- `O(HET)`: Observed heterozygosity
+- `E(HET)`: Expected heterozygosity
+- `P`: H-W p-value
+
+For case/control samples, each SNP will have three entries (rows) in this file, with TEST being either ALL, AFF (cases only, 'affected') or UNAFF (controls only, 'unaffected').
+
+There are additional filtering steps that you can go further. PLINK site on the side lists all the cool commands that you can use to treat your data. Usually, we also filter for related individuals and do a sex-check on the X-chromosome to check for sample mix-ups. 
+
+## Step 5 - Filtering out related individuals (OPTIONAL)
+
+We can skip this for now if you are running short on time.
+
+In the `SCRIPTS` folder, there is a script called `sbatch_KING.sh` that can be used to run [KING](http://people.virginia.edu/~wc9c/KING/manual.html) You can have a look inside for instructions on how to run the script. Check out the manual and try and figure out how the software works.
+After you have run the script have a look at the produced output files and figure out how to remove the related individuals. (*Hint - keep via Plink might be a good option) 
+
+The input files for KING need to be in PLINK binary format, which include a binary genotype file, a family file, and a map file, e.g., ex.bed, ex.fam, and ex.bim. 
+A binary format allows efficient compression of genotype data by using two bits to represent a genotype, which offers substantial computational savings that are essential to KING analysis.
+
+First load ```bioinfo-tools``` and then ```module load KING```.
+
+Examples of reading in a dataset are:
+```
+ king -b ex.bed --related
+ king -b ex.bed --fam ex.fam --bim ex.bim --related
+```
+In the first example, although only ex.bed is specified, the other two input files are pre-assumed to be ex.fam and ex.bim. 
+In the case where the other two input files may have a different prefix, the second example can be used instead. 
+
+What you can do is save this short script and submit it as a job.
+
+```
+#!/bin/bash -l
+#
+#
+#SBATCH -J king
+#SBATCH -t 12:00:00
+#SBATCH -A uppmax2025-2-281
+#SBATCH -n 8
+king -b $1  --unrelated
+```
+You can submit it as a job by doing:
+
+```
+sbatch -M snowy THIS_SCRIPT.sh YOUR_DATASET5.bed
+```
+
+Look at the output from KING & keep the unrelated individuals.
+
+## Step 6 - Plotting the heterozygosities per population (OPTIONAL)
+
+You can look at the different heterozygosities in the different populations, perhaps skip for now if you are running low on time.
+
+Compare the expected heterozygosities of the four populations:
+Do HWE for Unknown populations 1 - 4 
+
+```
+## get the 4 different groups from the fam files
+grep 'Unknown1 ' unk4.fam > list1 
+grep 'Unknown3 ' unk4.fam > list2 
+grep 'Unknown5 ' unk4.fam > list3 
+grep 'Unknown11 ' unk4.fam > list4 
+
+## extract the groups from the bed files using the above generated lists 
+plink --bfile unk4 --keep list1 --make-bed --out unk4_1 
+plink --bfile unk4 --keep list2 --make-bed --out unk4_2 
+plink --bfile unk4 --keep list3 --make-bed --out unk4_3 
+plink --bfile unk4 --keep list4 --make-bed --out unk4_4 
+
+## test HWE at p value <= 0.01 for the different sets of pops 
+plink --bfile unk4_1 --hwe 0.01 --make-bed --out unk4_1h 
+plink --bfile unk4_2 --hwe 0.01 --make-bed --out unk4_2h 
+plink --bfile unk4_3 --hwe 0.01 --make-bed --out unk4_3h 
+plink --bfile unk4_4 --hwe 0.01 --make-bed --out unk4_4h
+```
+
+To prepare your files for R simply paste this in:
+
+```
+plink --bfile unk4_1h --hardy --out hardy_unk4_1h 
+grep 'ALL' hardy_unk4_1h.hwe | sed 's/ALL/POP1/g' > hzt
+plink --bfile unk4_2h --hardy --out hardy_unk4_2h 
+grep 'ALL' hardy_unk4_2h.hwe | sed 's/ALL/POP2/g' >> hzt
+plink --bfile unk4_3h --hardy --out hardy_unk4_3h 
+grep 'ALL' hardy_unk4_3h.hwe | sed 's/ALL/POP3/g' >> hzt
+plink --bfile unk4_4h --hardy --out hardy_unk4_4h 
+grep 'ALL' hardy_unk4_4h.hwe | sed 's/ALL/POP4/g' >> hzt
+```
+
+Now we will plot the heterozygosities of the two populations in R:
+
+Open R by typing
+
+```
+R
+```
+
+Paste in the following script:
+
+```
+WD<-getwd()
+setwd(WD)
+infile1<-"hzt"
+outname<-"HeterozygosityPlot1"
+data1<-read.table(infile1)
+pdf (file=paste(outname,".pdf", sep =""), width =5, height = 5, pointsize =10)
+boxplot(data1[,8]~data1[,3], col = "Gold", xlab="Population", ylab="Exp Heterozygosity", main = "Heterozygosity boxplot")
+dev.off()
+#quit R
+quit()
+N
+```
+
+In order to look at the produced PDF ('HeterozygosityPlot1.pdf'), we need to move it to our local computer. This will be a bit different between laptops. In a new terminal window, where you have not logged in to Uppmax, type:
+
+```
+## These are some options
+rsync -av "{your_username}@pelle.uppmax.uu.se:/proj/uppmax2026-1-25/private/{the_directory_where_the_plot_is}/HeterozygosityPlot1.pdf" /{the_directory_in_your_local_pc_where_you_want_the_plot_to_be}
+scp {your_username}@pelle.uppmax.uu.se:/proj/uppmax2026-1-25/private/{the_directory_where_the_plot_is}/PCA_plot.pdf /{the_directory_in_your_local_pc_where_you_want_the_plot_to_be}
+```
+
+Do you see a difference in heterozygosity in the populations?
+
+## Step 7 - Data Merging & strand flipping (OPTIONAL)
+
+The next step would be to start merging your data with comparative data sets. Usually, when you merge your data with another data set, there are strand issues. The SNPs in the other data set might be typed on the reverse DNA strand and yours on the forward, or viceversa. Therefore, you need to flip the strand of one of the data sets for all the SNPs that show a strand mismatch. One should not flip C/G and A/T SNPs because one cannot distinguish reverse and forward orientation (i.e. C/G becomes G/C unlike other SNPs i.e. G/T which become C/A). Therefore before merging and flipping, all A/T and C/G SNPs must be excluded. However, this can be a problem since some of your SNPs in your data set may be monomorphic when you don't apply the MAF filter, i.e. in the `bim` file they will appear as `C 0` (with `0` meaning missing). So you don't know what kind of SNP it is, it can be `C G`, `C T` or `C A`. If it is `C G`, it needs to be filtered out, but that's not needed if it is `C T`.
+
+Therefore, before merging our data to other data sets it is important to first merge your data with a fake or 'reference individual': our `RefInd1`. This is an individual that is heterozygous at every SNP position. This 'fake' genome you can easily prepare from the SNP info file you get from the genotyping company or your own genomics processing software (such as Genome Studio from Illumina). You can also prepare it from data downloaded for each SNP from a web-database such as dbSNP. 
+
+We will start by extracting our SNPs of interest from the 'RefInd' (remember that you filtered out several SNPs in previous steps, so the intiial files 'unk1' contain more SNPs that we actually want).
+
+```
+plink --bfile RefInd1 --extract unk5.bim --make-bed --out RefInd1_ext 
+```
+
+The code below makes a list of C/G and A/T SNPs in your data set (or reference individual, they contain the same SNPs at this point):
+
+```
+sed 's/\t/ /g' RefInd1_ext.bim | grep " C G" > ATCGlist
+sed 's/\t/ /g' RefInd1_ext.bim | grep " G C" >> ATCGlist
+sed 's/\t/ /g' RefInd1_ext.bim | grep " A T" >> ATCGlist
+sed 's/\t/ /g' RefInd1_ext.bim | grep " T A" >> ATCGlist
+```
+
+Exclude the C/G and A/T SNPs form both your reference individual and data set:
+
+```
+plink  --bfile RefInd1_ext --exclude ATCGlist --make-bed --out RefInd1_ext2 
+plink  --bfile unk5 --exclude ATCGlist --make-bed --out unk6
+```
+
+Merge data set with RefInd:
+
+```
+plink --bfile RefInd1_ext2 --bmerge unk6.bed unk6.bim unk6.fam --make-bed --out MergeRef1  
+```
+
+An error is generated because of the strand mismatches. The generated file 'MergeRef1.missnp' contains the info on the SNPs that show mismatches. In the PLINK output message, you are advised to flip the strand of these SNPs in your data set.
+
+```
+plink --bfile unk6 --flip MergeRef1-merge.missnp --make-bed --out  unk7  
+```
+
+Now you can try the merging again, between the reference individual (unaltered) and your data set (with some SNPs flipped):
+
+```
+plink --bfile RefInd1_ext2 --bmerge unk7.bed unk7.bim unk7.fam --make-bed --out MergeRef2  
+```
+
+It should have worked now, right?
+
+Now that we have our data set together with a fake, extremely heterozygous individual, we can actually merge our data with a set of reference populations that we downloaded from published studies (e.g. HapMap, HGDP, SGDP). Many of the sites archiving the data provid them in PLINK format. For this practical, we selected a few reference populations from HapMap and HGDP to use as comparison with your unknown populations.
+
+Look at the 'refpops1.fam' file, do you recognize some of these population names (you can use a quick online search)? There are two HapMap and three HGDP populations.
+
+First, extract the SNPs we have in our data from the downloaded RefPops:
+
+```
+plink --bfile refpops1 --extract MergeRef2.bim --make-bed --out refpops2  
+```
+
+Now we will merge our data with the downloaded data:
+
+```
+plink --bfile MergeRef2 --bmerge refpops2.bed refpops2.bim refpops2.fam --make-bed --out MergeRefPop1  
+```
+
+Another strand issue, so we flip the strands of the reference population datasets:
+
+```
+plink --bfile refpops2 --flip MergeRefPop1-merge.missnp --make-bed --out refpops3  
+```
+
+We try the merging step again:
+
+```
+plink --bfile MergeRef2 --bmerge refpops3.bed refpops3.bim refpops3.fam --make-bed --out MergeRefPop2 
+```
+
+It works now. Look at your screen output. You will see that the reference populations contain SNPs that overlap with only a few of the SNPs in the unknown data (~15 000 vs ~95 000). We will now again filter for SNP missingness to exclude all the extra SNPs in the unknown pop data that do not exist in our reference populations downloaded from the public panels. With the command below, we keep only SNPs that are present in 90% of the individuals (i.e. they have 10% missingness, `--geno 0.1`).
+
+```
+plink --bfile MergeRefPop2 --geno 0.1 --make-bed --out MergeRefPop2fil 
+```
+
+How many SNPs are left for your analyses?
+
+The last thing to do is to remove your fake individual from your data: it was useful until now for the computing, but it is an artificial individual and not a true sample we want to analyse.
+
+```
+plink --bfile MergeRefPop2fil --remove RefInd1.fam --make-bed --out MergeRefPop3  
+```
+
+This is the final files for the next exercise. Rename them:
+
+```
+mv MergeRefPop3.bed PopStrucIn1.bed; mv MergeRefPop3.bim PopStrucIn1.bim; mv MergeRefPop3.fam PopStrucIn1.fam 
+```
+
+## Step 8 - LD Pruning
+
+Before running PCA and ADMIXTURE, it is advisable to prune the data to thin the marker set for linkage disequilibrium (LD). In a nutshell, we use the first SNP (in genome order) and compute its correlation with a few following SNPs (e.g. the next 50). When we finds a large correlation, we remove one SNP from the correlated pair, keeping the one with the largest minor allele frequency (MAF), thus possibly removing the first SNP. Then we goes on with the next SNP (not yet removed). You can read up on how to prune for LD [here](https://dalexander.github.io/admixture/admixture-manual.pdf).
+
+In PLINK, we first test which SNPs are in LD:
+```
+plink --bfile MergeRefPop3 --indep-pairwise 10 10 0.1
+
+```
+
+And then we remove them:
+
+```   
+plink --bfile MergeRefPop3 --extract plink.prune.in --make-bed --out MergeRefPop3_LDpruned
+```
+
+## Step 9 - Reflect and review
+
+How many SNPs are left for your analyses? What was the genotyping rate for the combined reference data set and what was it for the unknowns? What is the genotyping rate for the final merged dataset? 
+
+You obtained now the files you need to actually run the interesting analyses (PCA and ADMIXTURE).
+
+
+# 2: Population structure inference 
+
+For this part of the exercize copy the files from `/proj/uppmax2025-2-281/1BG508_2025/2_POPULATION_STRUCTURE_INFERENCE/2_PCA` to your directory.
+
+## Step 1 - Principal Component Analysis (PCA)
+
+The first population structure method we will look at is Principal Components Analysis. If the teacher assistant does not remember to explain the PCA, ask. There are different softwares to run PCA, as it is a very common way to represent multi-dimensional data in a simplified way (you can find many Youtube videos, Wiki pages or tutorials if you're interested in these tests!). Because we've been using PLINK so far, we will continue using it for this. Other options are Eigensoft or R. Results for an Eigensoft run can be found in the project folder:
+
+```
+/proj/uppmax2026-1-25/private/0_POPULATION_STRUCTURE_PRACTICAL/2_POPULATION_STRUCTURE_INFERENCE/2_PCA
+```
+
+Let's make a folder for the PCA results first, in your personal directory '{your_name}/PCA_ADMX':
+
+```
+mkdir PCA
+```
+
+Running a conventional PCA with PLINK could not be easier nor faster:
+
+```
+plink --bfile MergeRefPop3_LDpruned --pca --out PCA/MergeRefPop3_LDpruned
+```
+
+If you move into the results folder (`PCA`), you should see four files:
+
+- MergeRefPop3_LDpruned.eigenval
+- MergeRefPop3_LDpruned.eigenvec
+- MergeRefPop3_LDpruned.log
+- MergeRefPop3_LDpruned.nosex
+
+## Step 2- Plot the PCA in R
+
+The interesting output files from the PCA analysis end in `eigenval` and `eigenvec`.
+
+In the `.evec` file is the main output for the number of PCs that you specified (default of 20). The first row is the Eigenvalues for each of your PCs the rest of the rows list your Pop:Ind specification, the PCs and their loadings and your PopNumber at the end. 
+In the `.eval` is all the eigenvalues that were extracted. To work out the percentage of variation each PC explains, you divide your particular PC eigenvalue by the sum over all the eigenvalues.
+
+Now, prep for R:
+
+```
+R
+```
+
+Then, paste the following code in the R console:
+
+```
+WD<-getwd()
+setwd(WD)
+
+library("readr")
+library("ggplot2")
+
+## LOAD EVEC
+PCA <- read.table("MergeRefPop3_LDpruned.eigenvec")
+colnames(PCA) <- c("Population", "Sample", "PC1", "PC2", "PC3", "PC4", "PC5", "PC6", "PC7", "PC8", "PC9", "PC10", "PC11", "PC12", "PC13", "PC14", "PC15", "PC16", "PC17", "PC18", "PC19", "PC20")
+
+# LOAD EVAL
+PCA_eigvals <- read.table("MergeRefPop3_LDpruned.eigenval")
+PCA_eigvals$PC <- as.numeric(rownames(PCA_eigvals))
+colnames(PCA_eigvals) <- c("Eigenvalue", "PC")
+
+# Calculate centroids for group labels
+centroids <- aggregate(cbind(PC1,PC2)~Population,PCA,mean)
+
+pdf(file = paste0("PCA_plot.pdf"), width = 10, height = 15, pointsize = 12)
+
+# Split page into 2 rows, 1 column
+par(mfrow = c(2, 1))
+
+### Plot 1: Eigenvalues
+x <- PCA_eigvals$PC[1:30]
+y <- PCA_eigvals$Eigenvalue[1:30]
+
+plot(x, y, type="b", pch=19, col="steelblue",
+     xlab="PC", ylab="Eigenvalue")
+text(x, y, labels=x, pos=3, cex=0.7)
+
+### Plot 2: PC1 vs PC2 with polygons
+pops <- unique(PCA$Population)
+cols <- setNames(rainbow(length(pops)), pops)
+
+plot(PCA$PC1, PCA$PC2, type="n",
+     xlab="PC1", ylab="PC2")
+
+# Polygons (convex hulls)
+for (pop in pops) {
+  group <- PCA[PCA$Population == pop, ]
+  hull <- chull(group$PC1, group$PC2)
+  hull <- c(hull, hull[1])
+  polygon(group$PC1[hull], group$PC2[hull],
+          col = adjustcolor(cols[pop], alpha.f = 0.3),
+          border = cols[pop])}
+
+# Points
+for (pop in pops) {
+  group <- PCA[PCA$Population == pop, ]
+  points(group$PC1, group$PC2, pch=19, col=cols[pop])}
+
+# Centroid labels
+text(centroids$PC1, centroids$PC2,
+     labels = centroids$Population,
+     col = cols[centroids$Population],
+     cex = 0.8, font = 2)
+
+legend("topright", legend = pops, col = cols, pch = 19, bty = "n")
+
+dev.off()
+q()
+```
+
+Copying the file from the server onto your computer can be done via `scp` or `rsync`, so that you can later open it:
+
+```
+scp {your_username}@pelle.uppmax.uu.se:/proj/uppmax2026-1-25/private/{the_directory_where_the_plot_is}/PCA_plot.pdf /{the_directory_in_your_local_pc_where_you_want_the_plot_to_be}
+rsync -av "{your_username}@pelle.uppmax.uu.se:/proj/uppmax2026-1-25/private/{the_directory_where_the_plot_is}/PCA_plot.pdf" /{the_directory_in_your_local_pc_where_you_want_the_plot_to_be}
+```
+
+Look at the output PDF. Do the results of your PCA correspond to the population structure results you got from the ADMIXTURE plots?
+How many of the PCs do you think contain useful information. What part of the variation is represented by each of the PCs? Can you see the percentage variation that each PC explains?
+
+## Step 3 - ADMIXTURE 
+
+ADMIXTURE is a clustering software similar to STRUCTURE and we use it with the aim to infer populations and individual ancestries. It is nevertheless a clustering algorithm, which only describes the data at hand, just like PCA... it does not test any specific hypothesis. If the teaching assistant forgets to explain it, ask.
+
+ADMIXTURE runs directly from `.bed` or `.ped` files and needs no extra parameters for file preparation. 
+
+A basic ADMIXTURE run looks like this, where 'K' is the number of clusters you want to split the data into:
+
+```
+admixture -s time {your_dataset}.bed K
+```
+
+We need to run many iterations at each K value, because there can be some stochasticity in the clustering process. Therefore, a compute cluster and some scripting are very useful.
+
+First, we have to check what ADMIXTURE is called in Pelle:
+
+```
+module spider ADMIXTURE
+module load ADMIXTURE/1.3.0
+```
+
+Create a script file (using `nano`, for example: `nano run_admixture.sh`) and paste the code below, which will run ADMIXTURE for five values of K (2 to 6) and 3 iterations at each K value. You will need to change the directory where the pruned PLINK file set is.
+
+```
+#!/bin/bash
+
+# loop over K values
+for kval in {2..6}; do
+
+   # loop over the iterations
+   for itir in {1..3}; do
+           (echo '#!/bin/bash -l'
+           echo "
+
+           ## create a folder with the K value and iteration value
+           mkdir ${kval}.${itir}
+
+           ## move into this folder
+           cd ${kval}.${itir}
+
+           ## load and run ADMIXTURE for that specified K
+           module load ADMIXTURE/1.3.0
+           admixture -j3 -s $RANDOM $1 ${kval}
+
+           ## move one folder up
+           cd ../
+           exit 0") |
+
+           ## send all the previous code as an independent job
+               sbatch -n 3 -t 72:00:00 -A uppmax2026-1-25 -J ADMX.${kval}.${itir} -o ADMX.${kval}.${itir}.output -e ADMX.${kval}.${itir}.message
+
+       ## continue with the next iteration on the same K
+       done
+
+## continue with the following K
+done
+```
+
+You can see a `$1` in the script. This is asking for an input file to be given to the `run_admixture.sh` script, which will be the *full directory* and *file name* of your data set. In my case, sending the job will look like this:
+
+```
+bash run_admixture.sh /proj/uppmax2026-1-25/private/a_solerinunez/PCA_ADMX/MergeRefPop3_LDpruned.bed
+```
+
+After a successful ADMIXTURE run, you should be seeing a bunch of new folders being created, as well as some 'output' and 'message' files. In each of the folders, you will find the output `.P` and `.Q` for each iteration. These are the files we're interested in, but the 'message' file should inform you about any errors in your script.
+
+## Step 4 - Visualizing the results from ADMIXTURE 
+
+When the ADMXITURE analysis is finally done, we often use PONG or R to visualize our results. If your runs have not finished, we have the complete ADMIXTURE results in the following directory:
+
+```
+/proj/uppmax2026-1-25/private/0_POPULATION_STRUCTURE_PRACTICAL/2_POPULATION_STRUCTURE_INFERENCE/3_ADMIXTURE/1_ADMIXTURE_RUNS/
+```
+
+You can copy these files into your personal folder:
+
+```
+cp -r {full_path_to}/1_ADMIXTURE_RUNS/ {full_path_to_your_directory}/PCA_ADMX/ADMX
+```
+
+And then move to that folder.
+
+We open R like before:
+
+```
+R
+```
+
+You should then paste this to the console, but make the necessary changes so that directories are:
+
+```
+WD<-getwd()
+setwd(WD)
+
+# LOAD FAMILY FILE
+ADMX_fam <- read.table("/proj/uppmax2026-1-25/private/a_solerinunez/PCA_ADMX/MergeRefPop3_LDpruned.fam")
+colnames(ADMX_fam) <- c('Groups', 'Individuals')
+
+# LOAD ADMIXTURE RESULTS
+ADMX_data_k2 <- read.table("2.1/MergeRefPop3_LDpruned.2.Q")
+ADMX_data_k3 <- read.table("3.1/MergeRefPop3_LDpruned.3.Q")
+ADMX_data_k4 <- read.table("4.1/MergeRefPop3_LDpruned.4.Q")
+ADMX_data_k5 <- read.table("5.1/MergeRefPop3_LDpruned.5.Q")
+ADMX_data_k6 <- read.table("6.1/MergeRefPop3_LDpruned.6.Q")
+ADMX_k2 <- cbind(ADMX_fam[,c(1,2)],ADMX_data_k2)
+ADMX_k3 <- cbind(ADMX_fam[,c(1,2)],ADMX_data_k3)
+ADMX_k4 <- cbind(ADMX_fam[,c(1,2)],ADMX_data_k4)
+ADMX_k5 <- cbind(ADMX_fam[,c(1,2)],ADMX_data_k5)
+ADMX_k6 <- cbind(ADMX_fam[,c(1,2)],ADMX_data_k6)
+
+# color palette
+palette <- c("#A6CEE3","#1F78B4","#B2DF8A","#33A02C","#FB9A99","#E31A1C", "#FDBF6F","#FF7F00","#CAB2D6","#6A3D9A","#FFFF99","#B15928")
+
+## open a PDF file
+pdf(file=paste("ADMX_plot.pdf", sep=""), width=15, height=10, pointsize=12)
+
+# sorting of plots
+par(mfrow=c(5,1), oma=c(0,0,0,0), mar=c(2,3,2,2), mgp=c(1,0,-1.25))
+
+# Plot simple ADMIXTURE
+K2 <- barplot(t(as.matrix(ADMX_k2)[,3:4]), 
+        names.arg = t(as.matrix(ADMX_k2)[,1]), 
+        col=palette, border="white", lwd = 0.1, las=2, space=0.1,
+        cex.names=0.4, cex.lab=0.7, cex.axis=0.5, 
+        ylab="'Ancestry' proportion", main='K=2')
+K3 <- barplot(t(as.matrix(ADMX_k3)[,3:5]), 
+        names.arg = t(as.matrix(ADMX_k3)[,1]), 
+        col=palette, border="white", lwd = 0.1, las=2, space=0.1,
+        cex.names=0.4, cex.lab=0.7, cex.axis=0.5, 
+        ylab="'Ancestry' proportion", main='K=3')
+K4 <- barplot(t(as.matrix(ADMX_k4)[,3:6]), 
+        names.arg = t(as.matrix(ADMX_k4)[,1]), 
+        col=palette, border="white", lwd = 0.1, las=2, space=0.1,
+        cex.names=0.4, cex.lab=0.7, cex.axis=0.5, 
+        ylab="'Ancestry' proportion", main='K=4')
+K5 <- barplot(t(as.matrix(ADMX_k5)[,3:7]), 
+        names.arg = t(as.matrix(ADMX_k5)[,1]), 
+        col=palette, border="white", lwd = 0.1, las=2, space=0.1,
+        cex.names=0.4, cex.lab=0.7, cex.axis=0.5, 
+        ylab="'Ancestry' proportion", main='K=5')
+K6 <- barplot(t(as.matrix(ADMX_k6)[,3:8]), 
+        names.arg = t(as.matrix(ADMX_k6)[,1]), 
+        col=palette, border="white", lwd = 0.1, las=2, space=0.1,
+        cex.names=0.4, cex.lab=0.7, cex.axis=0.5, 
+        ylab="'Ancestry' proportion", main='K=6')
+
+## close PDF file
+dev.off()
+
+## exit R
+q()
+```
+
+Once we have run the plotting code, we copy the 'ADMX_plot.pdf' file into our local computer to open it:
+
+```
+scp {your_username}@pelle.uppmax.uu.se:/proj/uppmax2026-1-25/private/{the_directory_where_the_plot_is}/ADMX_plot.pdf /{the_directory_in_your_local_pc_where_you_want_the_plot_to_be}
+rsync -av "{your_username}@pelle.uppmax.uu.se:/proj/uppmax2026-1-25/private/{the_directory_where_the_plot_is}/ADMX_plot.pdf" /{the_directory_in_your_local_pc_where_you_want_the_plot_to_be}
+```
+
+## Step 5 - What do the results from ADMIXTURE and PCA tell you? 
+
+What do you see? What information does this give you about your unknown populations? Do the results of your PCA correspond to the population structure results you got from the ADMIXTURE plots? Can you figure out who they are?
+
+# 3: Review and reflect
+
+Okay, hopefully this project wasn't too difficult nor too boring nor too fast. Maybe it was even fun? 
+The point of today's exercise was to get a broad understanding of what a population structure analysis looks like (at least the first steps!) and get a visual representation of some results. Of course, there is plenty more to do, many analyses to run and lots more data to be scrutinized, but hopefully by going over some of the things today it got your imagination tingling! If you want to know more, you can read up on the papers recommended above. Although the population history of the continent we just worked on is very very complex, they should provide you with enough of a back story to be able to grasp the grand picture of things. You are free to also look into similar papers on the subject. Until next time!
+
+**IMPORTANT: After you have finished with your analyses, I'd appreciate if you delete all unnecessary files from your folder!**
